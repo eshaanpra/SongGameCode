@@ -2,7 +2,15 @@ import musicbrainzngs
 import re
 import streamlit as st
 
-st.title('Song Game')
+# Initialize session state variables if they don't exist
+if 'current_player_index' not in st.session_state:
+    st.session_state.current_player_index = 0
+if 'previous_song' not in st.session_state:
+    st.session_state.previous_song = None
+if 'used_songs' not in st.session_state:
+    st.session_state.used_songs = set()
+if 'game_messages' not in st.session_state:
+    st.session_state.game_messages = []
 
 # Set up the MusicBrainz API
 musicbrainzngs.set_useragent("SongChainGame", "0.1", "eshaan.prashanth@gmail.com")
@@ -74,60 +82,74 @@ def get_last_letter(word):
     else:
         return word[-1]  # Return the last letter if it's not numeric
 
-def main():
-    print("Welcome to the Song Chain Game!")
-    print("Rules: Each player must name a song and its artist. The song must start with the last letter of the previous song's name, and songs cannot be repeated.")
+st.title('Song Chain Game')
+st.write("Rules: Each player must name a song and its artist. The song must start with the last letter of the previous song's name, and songs cannot be repeated.")
 
-    players = ["Player 1", "Player 2"]
-    current_player_index = 0
-    previous_song = None
-    used_songs = set()
+# Game interface
+players = ["Player 1", "Player 2"]
+current_player = players[st.session_state.current_player_index]
 
-    while True:
-        current_player = players[current_player_index]
-        print(f"{current_player}'s turn!")
+# Display game history
+if st.session_state.game_messages:
+    st.write("Game History:")
+    for message in st.session_state.game_messages:
+        st.write(message)
 
-        invalid_attempt = False
+# Display current player's turn
+st.subheader(f"{current_player}'s turn!")
 
-        while True:
-            if invalid_attempt:
-                print("Please try again.")
+# Show the required starting letter if there's a previous song
+if st.session_state.previous_song:
+    expected_start_letter = get_last_letter(st.session_state.previous_song)
+    st.write(f"Your song must start with the letter '{expected_start_letter}'")
 
-            song_name = st.text_input(f"{current_player}, enter the song name: ",key="song_name").strip()
-            artist_name = st.text_input(f"{current_player}, enter the artist's name: ", key="artist_name").strip()
+# Input fields
+col1, col2 = st.columns(2)
+with col1:
+    song_name = st.text_input("Enter the song name:", key=f"song_input_{st.session_state.current_player_index}")
+with col2:
+    artist_name = st.text_input("Enter the artist's name:", key=f"artist_input_{st.session_state.current_player_index}")
 
-            song_name = convert_song_name(song_name)
-            
-            if artist_name == "":
-                print("Please enter an artist.")
-                invalid_attempt = True
-                continue
-            if previous_song:
-                expected_start_letter = get_last_letter(previous_song)
-                if not song_name.lower().startswith(expected_start_letter):
-                    print(f"The song must start with the letter '{expected_start_letter}'.")
-                    invalid_attempt = True
-                    continue
+# Submit button
+if st.button("Submit Turn"):
+    if song_name and artist_name:
+        song_name = convert_song_name(song_name)
+        
+        # Validate the move
+        valid_move = True
+        error_message = None
+        
+        if st.session_state.previous_song:
+            expected_start_letter = get_last_letter(st.session_state.previous_song)
+            if not song_name.lower().startswith(expected_start_letter):
+                valid_move = False
+                error_message = f"The song must start with the letter '{expected_start_letter}'"
 
-            if song_name.lower() in used_songs:
-                print("This song has already been used. Please choose a different song.")
-                invalid_attempt = True
-                continue
+        if song_name.lower() in st.session_state.used_songs:
+            valid_move = False
+            error_message = "This song has already been used. Please choose a different song."
 
-            if not validate_song(song_name, artist_name):
-                print("The specific song and artist combination could not be verified.")
-                invalid_attempt = True
-                continue
+        if not validate_song(song_name, artist_name):
+            valid_move = False
+            error_message = "The specific song and artist combination could not be verified."
 
-            invalid_attempt = False
-            break
+        if valid_move:
+            # Update game state
+            st.session_state.previous_song = song_name
+            st.session_state.used_songs.add(song_name.lower())
+            st.session_state.game_messages.append(f"{current_player}: {song_name} by {artist_name}")
+            st.session_state.current_player_index = 1 - st.session_state.current_player_index
+            st.success(f"Valid move! {song_name} by {artist_name}")
+            st.rerun()
+        else:
+            st.error(error_message)
+    else:
+        st.error("Please enter both song name and artist name.")
 
-        print(f"Valid move! {song_name} by {artist_name}")
-        previous_song = song_name
-        used_songs.add(song_name.lower())
-
-        # Switch to the next player
-        current_player_index = 1 - current_player_index
-
-if __name__ == "__main__":
-    main()
+# Reset button
+if st.button("Reset Game"):
+    st.session_state.current_player_index = 0
+    st.session_state.previous_song = None
+    st.session_state.used_songs = set()
+    st.session_state.game_messages = []
+    st.rerun()
